@@ -1,0 +1,16 @@
+{% include 'menu.mu.j2' %}
+{% include 'divider.mu.j2' %}
+`!{% for char in '#' + tag %}{% if char == ' ' %} {% else %}`Bfff{{ char }}`B48b{% endif %}{% endfor %}`! 
+{% include 'divider.mu.j2' %}
+
+>Страницы с тегом #{{ tag }} ({{ pages|length }})
+
+{% for page in pages %}
+`[📄 {{ page.title }}`{{ page.url }}]` — {{ page.date }}
+{% endfor %}
+
+{% include 'divider.mu.j2' %}
+`[⬅️ Все теги`/page/tags/index.mu]`
+{% include 'divider.mu.j2' %}
+Узел: {{ node_name }}
+Обновлено: {{ updated_at }}

@@ -1,0 +1,14 @@
+{{ node_name }}
+
+{% if node_description %}
+{{ node_description }}
+{% endif %}
+Владелец: {{ owner }}
+{% if contact %}Контакт: {{ contact }}{% endif %}
+
+Доступные страницы:
+{% for page in pages %}
+`[{{ page.title }}`{{ page.url }}]`
+{% endfor %}
+
+Обновлено: {{ updated_at }}

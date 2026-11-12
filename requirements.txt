@@ -1,0 +1,11 @@
+markdown-it-py
+watchdog
+Jinja2
+PyYAML
+nomadnet
+rns
+lxmf
+python-dotenv
+linkify-it-py
+Pillow
+requests

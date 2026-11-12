@@ -1,0 +1,12 @@
+{% include 'menu.mu.j2' %}
+{% include 'divider.mu.j2' %}
+`c`!{{ title }}`!
+`a {% include 'divider.mu.j2' %}
+
+{{ content }}
+
+{% include 'divider.mu.j2' %}
+{% if prev_page %}`[⬅️ {{ prev_page.title }}`{{ prev_page.url }}]`{% else %}⬅️ Начало раздела{% endif %} | {{ title }} | {% if next_page %}`[{{ next_page.title }} ➡️`{{ next_page.url }}]`{% else %}Конец раздела ➡️{% endif %}
+{% include 'divider.mu.j2' %}
+Узел: {{ node_name }}
+Обновлено: {{ updated_at }}

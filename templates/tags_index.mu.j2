@@ -1,0 +1,14 @@
+{% include 'menu.mu.j2' %}
+{% include 'divider.mu.j2' %}
+!{% for char in 'Теги' %}{% if char == ' ' %} {% else %}`Bfff{{ char }}`B48b{% endif %}{% endfor %}`!
+{% include 'divider.mu.j2' %}
+
+>Все теги на сайте ({{ tags|length }})
+
+{% for tag in tags %}
+`[🏷️ #{{ tag.name }}`{{ tag.url }}]` ({{ tag.count }})
+{% endfor %}
+
+{% include 'divider.mu.j2' %}
+Узел: {{ node_name }}
+Обновлено: {{ updated_at }}

@@ -1,0 +1,36 @@
+{% include 'menu.mu.j2' %}
+
+`B48b
+
+   `F48b`!{% for char in site_name %}{% if char == ' ' %} {% else %}`Bfff{{ char }}`B48b{% endif %}{% endfor %}`! `f
+
+`b
+{% if description %}
+{{ description }}
+{% endif %}
+{% if root_pages %}
+> Основные страницы:
+{% for page in root_pages %}
+`[ 📄 {{ page.title }}`{{ page.url }}]`
+{% endfor %}
+{% endif %}
+{% if subdir_indexes %}
+> Разделы сайта:
+{% for dir in subdir_indexes %}
+`[ 📁 {{ dir.name }}`{{ dir.url }}]` ({{ dir.count }} стр.)
+{% endfor %}
+{% endif %}
+> Последние обновления:
+{% for page in recent_pages %}
+`[ 🕒 {{ page.title }}`{{ page.url }}]`  — {{ page.date }}
+{% endfor %}
+{% if tags %}
+> Популярные теги:
+{% for tag in tags %}
+`[🏷️ #{{ tag.name }}`{{ tag.url }}]`{% if not loop.last %} {% endif %}
+{% endfor %}
+{% endif %}
+
+{% include 'divider.mu.j2' %}
+Узел: {{ node_name }}
+Обновлено: {{ updated_at }}

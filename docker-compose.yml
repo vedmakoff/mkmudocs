@@ -1,0 +1,36 @@
+services:
+  nomadnet-site:
+    build: .
+    image: nomadnet-site-builder:latest
+    container_name: nomadnet-site
+    
+    # Загружаем переменные из .env
+    env_file:
+      - .env
+    
+    # Монтируем директории
+    volumes:
+      - ${HOST_PAGES_DIR}:/pages
+      - ${HOST_CONFIG_DIR}:/data/config
+      - ./src:/app/src:ro
+      - ./templates:/app/templates:ro
+    
+    # Открываем порты
+    ports:
+      - "${NOMADNET_PORT:-4242}:${NOMADNET_PORT:-4242}/tcp"
+      - "${NOMADNET_PORT:-4242}:${NOMADNET_PORT:-4242}/udp"
+      - "37428:37428/udp"  # Shared instance port
+    
+    # Отключаем буферизацию Python для реального времени логов
+    environment:
+      - PYTHONUNBUFFERED=1
+    
+    # Перезапуск при падении
+    restart: unless-stopped
+    
+    # Логирование
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
