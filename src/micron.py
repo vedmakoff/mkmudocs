@@ -15,15 +15,51 @@ class MicronGenerator:
         self.link_suffix = '`_`f`'
 
         # Оформление таблиц
-        self.table_tag = '`t'          # открывающий/закрывающий тег таблицы Micron
-        self.table_separator = True    # выводить строку | --- | --- | после заголовка
-        self.table_pad_cells = True    # выравнивать колонки пробелами в исходнике .mu
+        self.table_tag = '`t'
+        self.table_separator = True
+        self.table_pad_cells = True
+
+        # Сворачиваемые блоки <details>
+        self.fold_open_marker = '`+>'      # развёрнут по умолчанию (<details open>)
+        self.fold_closed_marker = '`->'    # свёрнут по умолчанию (<details>)
+        self.fold_close = '<'              # сброс глубины фолдов в 0
+        self.fold_default_title = 'Подробнее'
+
+        # Защита кода при препроцессинге Markdown
+        self._fence_re = re.compile(
+            r'(^```.*?^```[ \t]*$|^~~~.*?^~~~[ \t]*$)',
+            re.DOTALL | re.MULTILINE
+        )
+        self._code_re = re.compile(
+            r'(^```.*?^```[ \t]*$|^~~~.*?^~~~[ \t]*$|`[^`\n]+`)',
+            re.DOTALL | re.MULTILINE
+        )
 
     def convert(self, markdown_text: str, source_md_file=None) -> str:
-        # Предварительная обработка: конвертируем ==текст== в <mark>текст</mark>
-        markdown_text = re.sub(r'==([^=]+)==', r'<mark>\1</mark>', markdown_text)
+        # Препроцессинг только вне блоков кода
+        markdown_text = self._apply_outside(markdown_text, self._normalize_details, self._fence_re)
+        markdown_text = self._apply_outside(markdown_text, self._mark_highlight, self._code_re)
         html = self.md.render(markdown_text)
         return self._html_to_micron(html, source_md_file)
+
+    def _apply_outside(self, text: str, func, pattern) -> str:
+        """Применяет func только к кускам текста вне кода (чётные индексы split)"""
+        parts = pattern.split(text)
+        return ''.join(part if i % 2 else func(part) for i, part in enumerate(parts))
+
+    def _normalize_details(self, text: str) -> str:
+        """Разносит <details>/<summary> пустыми строками, чтобы markdown-it
+        обработал содержимое как Markdown, а не как один сырой HTML-блок"""
+        text = re.sub(r'[ \t]*<details([^>]*)>[ \t]*',
+                      lambda m: f'\n\n<details{m.group(1)}>\n\n', text, flags=re.IGNORECASE)
+        text = re.sub(r'[ \t]*<summary([^>]*)>(.*?)</summary>[ \t]*',
+                      lambda m: f'\n\n<summary{m.group(1)}>{m.group(2)}</summary>\n\n',
+                      text, flags=re.IGNORECASE | re.DOTALL)
+        text = re.sub(r'[ \t]*</details>[ \t]*', '\n\n</details>\n\n', text, flags=re.IGNORECASE)
+        return text
+
+    def _mark_highlight(self, text: str) -> str:
+        return re.sub(r'==([^=]+)==', r'<mark>\1</mark>', text)
 
     def _decode_path(self, path: str) -> str:
         return unquote(path)
@@ -35,7 +71,6 @@ class MicronGenerator:
                     .replace('&#39;', "'").replace('&nbsp;', ' '))
 
     def _wrap_link(self, text: str, url: str) -> str:
-        """Оборачивает ссылку в зелёный цвет + подчёркивание"""
         return f"{self.link_prefix}[{text}`{url}]{self.link_suffix}"
 
     def _normalize_internal_link(self, url: str, source_md_file) -> str:
@@ -58,9 +93,10 @@ class MicronGenerator:
         return url
 
     def _html_to_micron(self, html: str, source_md_file=None) -> str:
-        # Хранилища для изоляции кода от постобработки (теги, сырые URL и т.д.)
+        # Хранилища для изоляции от постобработки
         code_blocks = []
         inline_codes = []
+        folds = []
 
         # 1. Заголовки
         html = re.sub(r'<h4[^>]*>(.*?)</h4>', r'>>> \1', html)
@@ -76,13 +112,12 @@ class MicronGenerator:
         html = re.sub(r'<i>(.*?)</i>', r'`*\1`*', html)
         html = re.sub(r'<u>(.*?)</u>', r'`_\1`_', html)
 
-        # 3. ХАЙЛАЙТЕР (жёлтый фон + чёрный текст)
+        # 3. ХАЙЛАЙТЕР
         def process_mark(match):
-            content = match.group(1)
-            return f"`Bee0`F000{content}`f`b"
+            return f"`Bee0`F000{match.group(1)}`f`b"
         html = re.sub(r'<mark>(.*?)</mark>', process_mark, html)
 
-        # 4. БЛОКИ КОДА -> изолируем плейсхолдером
+        # 4. БЛОКИ КОДА -> плейсхолдер
         def process_code_block(match):
             full_html = match.group(0)
             lang = 'CODE'
@@ -97,9 +132,6 @@ class MicronGenerator:
                 code = re.search(r'<pre[^>]*>(.*?)</pre>', full_html, re.DOTALL).group(1).strip()
 
             clean_code = self._unescape_html(code).replace('`', '')
-
-            # Ведущий пробел у каждой строки: защита от директив Micron
-            # в первой колонке ('#' комментарий, '>' заголовок, '-' разделитель)
             safe_code = '\n'.join(' ' + line for line in clean_code.split('\n'))
 
             header = f" ┌─ {lang}"
@@ -111,7 +143,7 @@ class MicronGenerator:
 
         html = re.sub(r'<pre>.*?</pre>', process_code_block, html, flags=re.DOTALL | re.IGNORECASE)
 
-        # 5. ИНЛАЙН КОД -> тоже изолируем плейсхолдером
+        # 5. ИНЛАЙН КОД -> плейсхолдер
         def process_inline_code(match):
             content = self._unescape_html(match.group(1)).replace('`', '')
             inline_codes.append(f"`F0f0`B666{content}`b`f")
@@ -154,12 +186,9 @@ class MicronGenerator:
             html
         )
 
-        # 8. ТАБЛИЦЫ -> pipe-разметка, обёрнутая в `t
-        # Обрабатываем ПОСЛЕ ссылок/форматирования, чтобы содержимое ячеек
-        # уже было в Micron-виде, но ДО удаления HTML-тегов
+        # 8. ТАБЛИЦЫ
         def process_table(match):
             table_html = match.group(0)
-
             rows_html = re.findall(r'<tr[^>]*>(.*?)</tr>', table_html, flags=re.DOTALL | re.IGNORECASE)
             rows = []
             for row_html in rows_html:
@@ -167,10 +196,10 @@ class MicronGenerator:
                 clean_cells = []
                 for cell in cells:
                     cell = re.sub(r'<br\s*/?>', ' ', cell, flags=re.IGNORECASE)
-                    cell = re.sub(r'<[^>]+>', '', cell)      # остатки HTML внутри ячейки
+                    cell = re.sub(r'<[^>]+>', '', cell)
                     cell = self._unescape_html(cell)
-                    cell = ' '.join(cell.split())            # ячейка обязана быть однострочной
-                    cell = cell.replace('|', r'\|')          # экранируем вертикальные черты
+                    cell = ' '.join(cell.split())
+                    cell = cell.replace('|', r'\|')
                     clean_cells.append(cell)
                 if clean_cells:
                     rows.append(clean_cells)
@@ -178,14 +207,11 @@ class MicronGenerator:
             if not rows:
                 return ''
 
-            # Выравниваем количество колонок по самой длинной строке
             col_count = max(len(r) for r in rows)
             for r in rows:
                 r.extend([''] * (col_count - len(r)))
 
-            # Ширины колонок (минимум 3 — под разделитель)
             widths = [max(3, max(len(r[i]) for r in rows)) for i in range(col_count)]
-
             if self.table_pad_cells:
                 rows = [[cell.ljust(widths[i]) for i, cell in enumerate(r)] for r in rows]
 
@@ -201,7 +227,41 @@ class MicronGenerator:
 
         html = re.sub(r'<table[^>]*>.*?</table>', process_table, html, flags=re.DOTALL | re.IGNORECASE)
 
-        # 9. Остальная разметка
+        # 9. СВОРАЧИВАЕМЫЕ БЛОКИ <details> -> фолды Micron
+        fold_depth = [0]
+
+        def process_fold(match):
+            # Закрывающий тег
+            if match.group(0).lower().startswith('</details'):
+                if fold_depth[0] == 0:
+                    return ''
+                fold_depth[0] -= 1
+                if fold_depth[0] > 0:
+                    return ''   # вложенный: '<' сбрасывает глубину сразу в 0
+                folds.append(f"\n{self.fold_close}\n\n")
+                return f"\x00FOLD{len(folds) - 1}\x00"
+
+            # Открывающий тег (+ необязательный <summary>)
+            attrs = match.group(1) or ''
+            title = match.group(2) or self.fold_default_title
+            title = re.sub(r'<[^>]+>', '', title)
+            title = ' '.join(self._unescape_html(title).split()).replace('`', '')
+
+            fold_depth[0] += 1
+            if fold_depth[0] > 1:
+                folds.append(f"\n>> {title}\n\n")
+                return f"\x00FOLD{len(folds) - 1}\x00"
+
+            marker = self.fold_open_marker if re.search(r'\bopen\b', attrs, re.IGNORECASE) else self.fold_closed_marker
+            folds.append(f"\n{marker}{title}\n\n")
+            return f"\x00FOLD{len(folds) - 1}\x00"
+
+        html = re.sub(
+            r'<details([^>]*)>\s*(?:<summary[^>]*>(.*?)</summary>)?|</details>',
+            process_fold, html, flags=re.IGNORECASE | re.DOTALL
+        )
+
+        # 10. Остальная разметка
         html = re.sub(r'<li>(.*?)</li>', r'• \1\n', html)
         html = re.sub(r'</?[uo]l[^>]*>', '', html)
         html = re.sub(r'<p>(.*?)</p>', r'\1\n\n', html)
@@ -211,24 +271,26 @@ class MicronGenerator:
         html = self._unescape_html(html)
         html = re.sub(r'\n{3,}', '\n\n', html)
 
-        # 10. Теги
+        # 11. Теги
         def process_tag(match):
             tag_name = match.group(1)
             return self._wrap_link(f'#{tag_name}', f'/page/tags/{tag_name}.mu')
 
         html = re.sub(r'#([a-zA-Zа-яА-ЯёЁ0-9_-]+)', process_tag, html)
 
-        # 11. СЕТКА БЕЗОПАСНОСТИ ДЛЯ СЫРЫХ URL
+        # 12. СЕТКА БЕЗОПАСНОСТИ ДЛЯ СЫРЫХ URL
         def process_raw_url(match):
             url = match.group(0)
             return self._wrap_link(url, url)
 
         html = re.sub(r'(?<!`)(?<!\[)https?://[^\s`\[\]<>\]]+', process_raw_url, html)
 
-        # 12. ВОЗВРАЩАЕМ КОД НА МЕСТО (после всей постобработки)
+        # 13. ВОЗВРАЩАЕМ ИЗОЛИРОВАННЫЕ ФРАГМЕНТЫ
         for i, block in enumerate(code_blocks):
             html = html.replace(f"\x00CB{i}\x00", block)
         for i, snippet in enumerate(inline_codes):
             html = html.replace(f"\x00IC{i}\x00", snippet)
+        for i, part in enumerate(folds):
+            html = html.replace(f"\x00FOLD{i}\x00", part)
 
         return html.strip()
