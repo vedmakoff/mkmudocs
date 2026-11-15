@@ -2,12 +2,17 @@
 {% include 'divider.mu.j2' %}
 >`!{{ dir_name }}`!
 {% include 'divider.mu.j2' %}
-
+{% if subdirs %}
+> Вложенные разделы:
+{% for dir in subdirs %}
+`[ 📁 {{ dir.name }}`{{ dir.url }}]` ({{ dir.count }} стр.)
+{% endfor %}
+{% include 'divider.mu.j2' %}
+{% endif %}
 Содержание раздела:
 {% for page in pages %}
 `[ 📄 {{ page.title }}`{{ page.url }}`] — {{ page.date }}
 {% endfor %}
-
 {% include 'divider.mu.j2' %}
 Узел: {{ node_name }}
 Обновлено: {{ updated_at }}

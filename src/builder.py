@@ -205,7 +205,7 @@ class SiteBuilder:
                 page['next'] = pages[i+1] if i < len(pages) - 1 else None
             if rel_dir != '/':
                 subdir_indexes.append({'name': rel_dir.lstrip('/').capitalize(), 'url': f"/page/{rel_dir.lstrip('/')}/index.mu", 'count': len(pages)})
-                self._generate_dir_index(rel_dir, pages, menu_items)
+                self._generate_dir_index(rel_dir, pages, menu_items, dir_pages)
 
         for url, data in page_details.items():
             self._render_and_save_page(data, menu_items)
@@ -262,20 +262,45 @@ class SiteBuilder:
         output_path.write_text(rendered, encoding='utf-8')
         print(f"  ✓ {data['rel_path']} → {output_path.relative_to(self.site_dir)}")
 
-    def _generate_dir_index(self, rel_dir, pages, menu_items):
+    def _generate_dir_index(self, rel_dir, pages, menu_items, dir_pages):
+        # Находим прямые вложенные подкаталоги
+        subdirs = []
+        current_prefix = rel_dir.lstrip('/') + '/'
+        for other_dir in dir_pages.keys():
+            if other_dir == '/':
+                continue
+            other_path = other_dir.lstrip('/')
+            if other_path.startswith(current_prefix):
+                # Проверяем, что это прямой потомок (нет дополнительных '/')
+                remainder = other_path[len(current_prefix):]
+                if '/' not in remainder:
+                    subdirs.append({
+                        'name': remainder.capitalize(),
+                        'url': f"/page/{other_path}/index.mu",
+                        'count': len(dir_pages[other_dir])
+                    })
+        subdirs.sort(key=lambda x: x['name'])
+
         template = self.env.get_template('dir_index.mu.j2')
-        rendered = template.render(dir_name=rel_dir.lstrip('/').capitalize(), node_name=self.node_name, pages=pages, menu_items=menu_items, updated_at=datetime.now().strftime(self.date_format))
+        rendered = template.render(
+            dir_name=rel_dir.lstrip('/').capitalize(),
+            node_name=self.node_name,
+            pages=pages,
+            subdirs=subdirs,
+            menu_items=menu_items,
+            updated_at=datetime.now().strftime(self.date_format)
+        )
         output_path = self.site_dir / rel_dir.lstrip('/') / 'index.mu'
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(rendered, encoding='utf-8')
 
     def _generate_tag_page(self, tag, pages, menu_items):
-        template = self.env.get_template('tag.mu.j2')
-        pages.sort(key=lambda x: x['date'], reverse=True)
-        rendered = template.render(tag=tag, pages=pages, menu_items=menu_items, node_name=self.node_name, updated_at=datetime.now().strftime(self.date_format))
-        output_path = self.site_dir / 'tags' / f"{tag}.mu"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(rendered, encoding='utf-8')
+            template = self.env.get_template('tag.mu.j2')
+            pages.sort(key=lambda x: x['date'], reverse=True)
+            rendered = template.render(tag=tag, pages=pages, menu_items=menu_items, node_name=self.node_name, updated_at=datetime.now().strftime(self.date_format))
+            output_path = self.site_dir / 'tags' / f"{tag}.mu"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_text(rendered, encoding='utf-8')
 
     def _generate_tags_index(self, tags_list, menu_items):
         template = self.env.get_template('tags_index.mu.j2')
