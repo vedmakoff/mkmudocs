@@ -180,6 +180,18 @@ class SiteBuilder:
         tags = re.findall(r'#([a-zA-Zа-яА-ЯёЁ0-9_-]+)', content)
         return list(set(tags))
 
+    @staticmethod
+    def _plain_text(md: str) -> str:
+        """Грубая очистка markdown для поискового индекса"""
+        text = re.sub(r'```.*?```', ' ', md, flags=re.S)      # блоки кода
+        text = re.sub(r'`[^`]*`', ' ', text)                   # инлайн-код
+        text = re.sub(r'!\[[^\]]*\]\([^)]*\)', ' ', text)      # картинки
+        text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', text)   # ссылки -> текст
+        text = re.sub(r'^---.*?---', ' ', text, flags=re.S)    # front matter
+        text = re.sub(r'[#>*_~|=]', ' ', text)                 # разметка
+        return re.sub(r'\s+', ' ', text).strip()
+
+
     def build(self):
         print(f"Сборка сайта: {self.site_name}")
         menu_items = self._get_top_level_dirs()
@@ -222,6 +234,12 @@ class SiteBuilder:
         all_pages = [p for pages in dir_pages.values() for p in pages]
         all_pages.sort(key=lambda x: x['date'], reverse=True)
         
+        self._generate_search_index(all_pages)
+        self._install_dynamic_pages()
+
+        # Генерируем статическое меню для динамических страниц
+        self._generate_menu(menu_items)
+        
         self._generate_root_index(root_pages, subdir_indexes, all_pages[:5], tags_list[:10], menu_items)
         self._generate_node_info(list(page_details.values()), menu_items)
         print(f"✅ Сборка завершена. Страниц: {len(page_details)}, Тегов: {len(tags_list)}")
@@ -248,7 +266,8 @@ class SiteBuilder:
                 'content': micron_content,
                 'date': file_date,
                 'tags': tags,
-                'metadata': metadata
+                'metadata': metadata,
+                'plain': self._plain_text(markdown_content)[:4000]
             }
         except Exception as e:
             print(f"  ✗ Ошибка чтения {md_file}: {e}")
@@ -321,6 +340,13 @@ class SiteBuilder:
         output_path = self.site_dir / 'node.info'
         output_path.write_text(rendered, encoding='utf-8')
 
+    def _generate_menu(self, menu_items):
+        """Генерирует статическое меню для использования в динамических страницах"""
+        template = self.env.get_template('menu.mu.j2')
+        rendered = template.render(menu_items=menu_items)
+        output_path = self.site_dir / 'menu.mu'
+        output_path.write_text(rendered, encoding='utf-8')
+
     def _parse_frontmatter(self, content: str):
         if content.startswith('---'):
             parts = content.split('---', 2)
@@ -331,6 +357,35 @@ class SiteBuilder:
                 except Exception:
                     pass
         return {}, content
+
+    def _generate_search_index(self, all_pages):
+        import json
+        entries = [{
+            'title': p['title'],
+            'url':   p['url'],
+            'date':  p.get('date', ''),
+            'tags':  p.get('tags', []),
+            'text':  p.get('plain', ''),
+        } for p in all_pages]
+        
+        # Кладем индекс в SITE_DIR, но не в pages_path, чтобы он не светился как страница
+        index_path = self.site_dir / 'search_index.json'
+        index_path.write_text(json.dumps(entries, ensure_ascii=False), encoding='utf-8')
+        print(f"  🔍 Поисковый индекс: {len(entries)} страниц → {index_path}")
+
+    def _install_dynamic_pages(self):
+        """Копирует исполняемые скрипты из src/dynamic/ в SITE_DIR и ставит +x"""
+        import shutil
+        src_dynamic_dir = Path(__file__).parent / 'dynamic'
+        if not src_dynamic_dir.is_dir():
+            return
+        
+        for f in sorted(src_dynamic_dir.iterdir()):
+            if f.is_file() and not f.name.startswith('.'):
+                dst = self.site_dir / f.name
+                shutil.copy2(f, dst)
+                dst.chmod(0o755)  # КРИТИЧЕСКИ ВАЖНО: без этого NomadNet не запустит скрипт
+                print(f"  ⚙️ Динамическая страница: {f.name} → {dst.name} (chmod +x)")
 
 if __name__ == '__main__':
     builder = SiteBuilder()
