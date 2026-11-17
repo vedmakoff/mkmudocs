@@ -346,6 +346,9 @@ class SiteBuilder:
         rendered = template.render(menu_items=menu_items)
         output_path = self.site_dir / 'menu.mu'
         output_path.write_text(rendered, encoding='utf-8')
+        footer = (f"Узел: {self.node_name}\n"
+                  f"Обновлено: {datetime.now().strftime(self.date_format)}")
+        (self.site_dir / 'footer.mu').write_text(footer, encoding='utf-8')
 
     def _parse_frontmatter(self, content: str):
         if content.startswith('---'):
