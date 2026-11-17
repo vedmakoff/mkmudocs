@@ -119,7 +119,13 @@ def main():
             print(f'`F888Показаны первые {LIMIT} из {len(results)}. Уточните запрос.`f')
 
     # Подвал
-    print_footer()
+    FOOTER_PATH = Path(__file__).resolve().parent / 'footer.mu'
+
+
+    def print_footer():
+        print('`---')
+        if FOOTER_PATH.exists():
+            print(FOOTER_PATH.read_text(encoding='utf-8').rstrip())
 
 
 if __name__ == '__main__':
